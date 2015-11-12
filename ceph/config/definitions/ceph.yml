@@ -43,20 +43,37 @@ If this is checked, then the binaries will be built and pushed to chacra even if
           description: "The version for release, e.g. 0.94.4"
 
     builders:
-      - multijob:
-          name: 'ceph tag phase'
-          condition: SUCCESSFUL
-          projects:
-            - name: ceph-tag
-              current-parameters: true
-              exposed-scm: false
-      - multijob:
-          name: 'ceph setup phase'
-          condition: SUCCESSFUL
-          projects:
-            - name: ceph-setup
-              current-parameters: true
-              exposed-scm: false
+      # Create a new tag and build from the private repo only if the user
+      # specified a $VERSION.
+      - conditional-step:
+          condition-kind: shell
+          condition-command: 'if [ "$VERSION" = "" ]; then exit 1; fi'
+          steps:
+            - multijob:
+                name: 'ceph tag and setup phase (from private repo)'
+                condition: SUCCESSFUL
+                projects:
+                  - name: ceph-tag
+                    current-parameters: true
+                    exposed-scm: false
+                  - name: ceph-setup-next
+                    current-parameters: true
+                    exposed-scm: false
+                    predefined-parameters: REPO=git@github.com:ceph/ceph-releases.git
+      # If the user left $VERSION unspecified, then assume we should build
+      # directly from the public repository, without tagging.
+      - conditional-step:
+          condition-kind: shell
+          condition-command: 'if [ "$VERSION" = "" ]; then exit 0; else exit 1; fi'
+          steps:
+            - multijob:
+                name: 'ceph setup phase (from public repo)'
+                condition: SUCCESSFUL
+                projects:
+                  - name: ceph-setup-next
+                    current-parameters: true
+                    exposed-scm: false
+                    predefined-parameters: REPO=https://github.com/ceph/ceph
       - multijob:
           name: 'ceph build phase'
           condition: SUCCESSFUL
